@@ -3,6 +3,10 @@
 
 TaskEngine consists of a simple model consisting of **Event Providers** and **Action Providers** these components are then chained together using a very simple description language.
 
+
+[Licensed under CC0 1.0 Universal](LICENSE.md)
+
+
 **Example of the "language" layout**
 ```
 <provider> <resource_title> {
@@ -30,4 +34,3 @@ TaskEngine consists of a simple model consisting of **Event Providers** and **Ac
 * **localexec_action**
 * **local_powershell_action**
 * **mongo_find_action**
-
