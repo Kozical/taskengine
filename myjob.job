@@ -1,0 +1,37 @@
+// Maybe we have multiple comments at the top
+//
+
+// My second comment at the top
+
+
+// MyJobListener: listens for incoming requests on /myjob/[+id]
+listener_event MyJobListener {
+	Path: /myjob
+}
+
+mongo_find_action GetRazorItem {
+	Database: build
+	Collection: razors
+	Limit: 1
+	Sort: -timestamp
+}
+
+local_powershell_action FilterNodes {
+	File: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+	Args:[
+		-ExecutionPolicy
+		Bypass
+		-File
+		C:\temp\Filter-Nodes.ps1
+	]
+	Params:{
+		-Data: $(GetRazorItem.Result)
+	}
+}
+
+listener_action RespondToRequest {
+	Headers:{
+		Content-Type: application/json
+	}
+	Response: $(FilterNodes.Output)
+}
