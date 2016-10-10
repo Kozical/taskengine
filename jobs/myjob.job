@@ -1,0 +1,17 @@
+// Maybe we have multiple comments at the top
+//
+
+// My second comment at the top
+
+
+// MyJobListener: listens for incoming requests on /myjob/[+id]
+ticker_event Every15Seconds {
+	Interval: 15
+	Period: Second
+}
+mongo_action GetRazorItem {
+	Database: build
+	Collection: razors
+	Limit: 1
+	Sort: -timestamp
+}

@@ -1,0 +1,9 @@
+listener_event ListenForStuff {
+	Path: /http
+}
+listener_action RespondWithStuff {
+	Headers:{
+		Content-Type: application/json
+	}
+	Response: "it works!"
+}

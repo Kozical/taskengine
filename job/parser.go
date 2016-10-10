@@ -3,6 +3,7 @@ package job
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 )
 
 import (
@@ -26,24 +27,47 @@ type Parser struct {
 	f *os.File
 }
 
-func NewParser(path string) (p *Parser, err error) {
-	var f *os.File
-	if f, err = os.Open(path); err != nil {
-		return
+func ParseJobsInDirectory(te *TaskEngine, path string) (jobs []*Job, err error) {
+	var jobPath string
+
+	if filepath.IsAbs(path) == false {
+		jobPath = path
+	} else {
+		jobPath, err = filepath.Abs(path)
+		if err != nil {
+			return
+		}
 	}
-	p = &Parser{
-		f: f,
-		t: NewTokenizer(bufio.NewReader(f)),
+
+	var files []string
+	files, err = filepath.Glob(filepath.Join(jobPath, "*.job"))
+
+	for _, f := range files {
+		var fd *os.File
+		var job *Job
+
+		if fd, err = os.Open(f); err != nil {
+			return
+		}
+		p := &Parser{
+			f: fd,
+			t: NewTokenizer(bufio.NewReader(fd)),
+		}
+		job, err = p.parse(te)
+		if err != nil {
+			return
+		}
+		jobs = append(jobs, job)
 	}
 	return
 }
 
-func (p *Parser) Parse() (job *Job, err error) {
+func (p *Parser) parse(te *TaskEngine) (job *Job, err error) {
 	var obj []ParseObject
 
 	err = json.Unmarshal(p.toJson(), &obj)
 	if err != nil {
-		fmt.Printf("Error parsing json data.. %v\n", err)
+		err = fmt.Errorf("Error parsing json data.. %v\n", err)
 		return
 	}
 
@@ -51,31 +75,32 @@ func (p *Parser) Parse() (job *Job, err error) {
 		Name: p.f.Name(),
 	}
 
-	RegisteredEventProvidersLock.Lock()
-	defer RegisteredEventProvidersLock.Unlock()
-
-	RegisteredActionProvidersLock.Lock()
-	defer RegisteredActionProvidersLock.Unlock()
-
 	for i, v := range obj {
 		if i == 0 {
-			job.Event = &Event{
-				Name:       v.Name,
-				Properties: JSONPromote(v.Properties),
-				Provider:   v.Provider,
-				Event:      RegisteredEventProviders[v.Provider],
+			eventProvider := te.GetEventProvider(v.Provider)
+			if eventProvider == nil {
+				err = fmt.Errorf("EventProvider %s not found, when reading %s", v.Provider, p.f.Name())
+				return
 			}
+			job.Event = &Event{
+				Provider: eventProvider,
+			}
+			job.Event.Properties = JSONPromote(v.Properties)
 			continue
 		}
-		job.Actions = append(job.Actions, &Action{
-			Name:       v.Name,
-			Properties: JSONPromote(v.Properties),
-			Provider:   v.Provider,
-			Action:     RegisteredActionProviders[v.Provider],
-		})
+		actionProvider := te.GetActionProvider(v.Provider)
+		if actionProvider == nil {
+			err = fmt.Errorf("ActionProvider %s not found, when reading %s", v.Provider, p.f.Name())
+			return
+		}
+		action := &Action{
+			Provider: actionProvider,
+		}
+		action.Properties = JSONPromote(v.Properties)
+		job.Actions = append(job.Actions, action)
 	}
 
-	job.Register()
+	err = job.Register()
 	return
 }
 
@@ -219,6 +244,8 @@ func JSONEscape(data string) string {
 	return buf.String()
 }
 
+// input:  [ {"a":"value"},{"b":"value"} ]
+// result: { "a":"value", "b":"value" }
 func JSONPromote(data []byte) []byte {
 	var insideQuotes bool
 	var braceDepth int

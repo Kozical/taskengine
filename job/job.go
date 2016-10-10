@@ -5,31 +5,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 )
 
-type DispatchFunc func(StateObject)
-type EventFunc func(*Job, json.RawMessage, DispatchFunc) error
-type ActionFunc func(json.RawMessage, *Job) (StateObject, error)
+type DispatchFunc func(StateObject) error
+
+//type EventFunc func(*Job, json.RawMessage, DispatchFunc) error
+//type ActionFunc func(json.RawMessage, *Job) (StateObject, error)
 
 type StateObject interface {
 	GetProperty(string) string
 }
 
-type Action struct {
-	Name       string
-	Provider   string
-	Action     ActionFunc
+type Task struct {
 	Properties json.RawMessage
 	State      StateObject
 }
 
+type Action struct {
+	Task
+	Provider ActionProvider
+}
+
 type Event struct {
-	Name       string
-	Provider   string
-	Event      EventFunc
-	Properties json.RawMessage
-	State      StateObject
+	Task
+	Provider EventProvider
 }
 
 type Job struct {
@@ -39,38 +38,36 @@ type Job struct {
 }
 
 func (j *Job) GetStateObject(name string) StateObject {
-	if j.Event.Name == name {
+	if j.Event.Provider.Name() == name {
 		return j.Event.State
 	}
 	for _, a := range j.Actions {
-		if a.Name == name {
+		if a.Provider.Name() == name {
 			return a.State
 		}
 	}
 	return nil
 }
 
-func (j *Job) Register() {
-	fmt.Printf("Registering job %s\n", j.Name)
-	err := j.Event.Event(j, j.Event.Properties, j.Run)
-	if err != nil {
-		fmt.Printf("Failed to register %s\n", j.Name)
-	}
+func (j *Job) Register() (err error) {
+	err = j.Event.Provider.Event(j, j.Event.Properties, j.Run)
+	return
 }
 
-func (j *Job) Run(state StateObject) {
+func (j *Job) Run(state StateObject) error {
 	j.Event.State = state
+	fmt.Printf("Job Dispatched: %s\n", j.Name)
 
 	for _, v := range j.Actions {
 		p := j.interpolateState(v.Properties)
-		fmt.Printf("Calling Action[%s] -> %s\n", v.Name, p)
-		actionState, err := v.Action(p, j)
+		fmt.Printf("Calling Action[%s] -> %s\n", v.Provider.Name(), p)
+		actionState, err := v.Provider.Action(p, j)
 		if err != nil {
-			fmt.Printf("Error in Action[%s] -> %v\n", v.Name, err)
-			break
+			return fmt.Errorf("Error in Action[%s] -> %v\n", v.Provider.Name(), err)
 		}
 		v.State = actionState
 	}
+	return nil
 }
 
 // interpolateState: takes a string that potentially has $(state.something) in it
@@ -79,6 +76,7 @@ func (j *Job) Run(state StateObject) {
 // the interpolated value is inlined in the original context of the string
 // if there is not an expression in the string, then the original contents are
 // returned as a new string
+//$( <resource_title>.<property_name> )
 func (j *Job) interpolateState(data []byte) []byte {
 	var insideExpression bool
 	var out bytes.Buffer
@@ -112,30 +110,4 @@ func (j *Job) interpolateState(data []byte) []byte {
 		out.WriteByte(data[i])
 	}
 	return out.Bytes()
-}
-
-var RegisteredActionProvidersLock sync.Mutex
-var RegisteredActionProviders map[string]ActionFunc
-
-var RegisteredEventProvidersLock sync.Mutex
-var RegisteredEventProviders map[string]EventFunc
-
-func RegisterActionProvider(name string, f ActionFunc) {
-	RegisteredActionProvidersLock.Lock()
-	defer RegisteredActionProvidersLock.Unlock()
-
-	if RegisteredActionProviders == nil {
-		RegisteredActionProviders = make(map[string]ActionFunc)
-	}
-
-	RegisteredActionProviders[name] = f
-}
-
-func RegisterEventProvider(name string, f EventFunc) {
-	RegisteredEventProvidersLock.Lock()
-	defer RegisteredEventProvidersLock.Unlock()
-	if RegisteredEventProviders == nil {
-		RegisteredEventProviders = make(map[string]EventFunc)
-	}
-	RegisteredEventProviders[name] = f
 }
