@@ -86,6 +86,7 @@ func (p *Parser) parse(te *TaskEngine) (job *Job, err error) {
 				Provider: eventProvider,
 			}
 			job.Event.Properties = JSONPromote(v.Properties)
+			job.Event.Title = v.Name
 			continue
 		}
 		actionProvider := te.GetActionProvider(v.Provider)
@@ -97,6 +98,7 @@ func (p *Parser) parse(te *TaskEngine) (job *Job, err error) {
 			Provider: actionProvider,
 		}
 		action.Properties = JSONPromote(v.Properties)
+		action.Title = v.Name
 		job.Actions = append(job.Actions, action)
 	}
 
@@ -187,15 +189,16 @@ Loop:
 		}
 	}
 
-	if propertyCount > 0 ||
-		propertyMapCount > 0 {
-
+	if propertyCount > 0 {
 		buf.WriteString(`}]`)
 		propertyCount = 0
+	}
+	if propertyMapCount > 0 {
+		buf.WriteString(`}}]`)
 		propertyMapCount = 0
 	}
 	if propertyArrayCount > 0 {
-		buf.WriteByte(']')
+		buf.WriteString(`]}]`)
 		propertyArrayCount = 0
 	}
 	if providerCount > 0 {

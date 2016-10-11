@@ -1,0 +1,7 @@
+{
+	"addr": "self.lab.local",
+	"port": 8103,
+	"key_path": "ssl/self.lab.local.key",
+	"crt_path": "ssl/self.lab.local.crt",
+	"ca_path": "ssl/ca.pem"
+}

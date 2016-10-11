@@ -17,6 +17,7 @@ type StateObject interface {
 }
 
 type Task struct {
+	Title      string
 	Properties json.RawMessage
 	State      StateObject
 }
@@ -37,12 +38,24 @@ type Job struct {
 	Actions []*Action
 }
 
-func (j *Job) GetStateObject(name string) StateObject {
+func (j *Job) GetStateByProvider(name string) StateObject {
 	if j.Event.Provider.Name() == name {
 		return j.Event.State
 	}
 	for _, a := range j.Actions {
 		if a.Provider.Name() == name {
+			return a.State
+		}
+	}
+	return nil
+}
+
+func (j *Job) GetStateByResource(name string) StateObject {
+	if j.Event.Title == name {
+		return j.Event.State
+	}
+	for _, a := range j.Actions {
+		if a.Title == name {
 			return a.State
 		}
 	}
@@ -94,9 +107,11 @@ func (j *Job) interpolateState(data []byte) []byte {
 				var obj string
 				parts := strings.Split(exp.String(), ".")
 				if len(parts) > 1 {
-					state := j.GetStateObject(parts[0])
+					state := j.GetStateByResource(parts[0])
+					fmt.Printf("State: %v\n", state)
 					if state != nil {
 						obj = JSONEscape(state.GetProperty(strings.Join(parts[1:], ".")))
+						fmt.Printf("obj: %s\n", obj)
 					}
 				}
 				out.WriteString(obj)

@@ -1,0 +1,20 @@
+listener_event ListenForConnections {
+	Path: /getservices
+}
+remoteexec_action DoStuff {
+	File: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+	Args:[
+		-ExecutionPolicy
+		Bypass
+		-File
+		$scripts\Get-Services.ps1
+		-Name
+		b*
+	]
+}
+listener_action Respond {
+	Headers:{
+		Content-Type: application/json
+	}
+	Response: $(DoStuff.Output)
+}

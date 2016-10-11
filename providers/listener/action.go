@@ -39,6 +39,9 @@ func (lap *ListenerActionProvider) Action(raw json.RawMessage, j *job.Job) (s jo
 	for k, v := range lap.Settings.Headers {
 		state.w.Header().Add(k, v)
 	}
+
+	fmt.Printf("response: %s\n", lap.Settings.Response)
+
 	var n int
 	n, err = state.w.Write([]byte(lap.Settings.Response))
 	if err != nil {

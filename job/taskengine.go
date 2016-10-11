@@ -14,7 +14,6 @@ type ActionProvider interface {
 	Name() string
 	Cleanup()
 }
-
 type TaskEngine struct {
 	Events  []EventProvider
 	Actions []ActionProvider

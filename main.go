@@ -8,6 +8,7 @@ import (
 	"github.com/Kozical/taskengine/providers/localexec"
 	"github.com/Kozical/taskengine/providers/localpowershell"
 	"github.com/Kozical/taskengine/providers/mongo"
+	"github.com/Kozical/taskengine/providers/remoteexec"
 	"github.com/Kozical/taskengine/providers/ticker"
 )
 
@@ -33,7 +34,7 @@ func main() {
 
 func RegisterProviders(t *job.TaskEngine) (err error) {
 	var lep job.EventProvider
-	var meap job.ActionProvider
+	var meap, rep job.ActionProvider
 
 	lep, err = listener.NewListenerEventProvider("config/listener.json")
 	if err != nil {
@@ -43,12 +44,17 @@ func RegisterProviders(t *job.TaskEngine) (err error) {
 	if err != nil {
 		return
 	}
+	rep, err = remoteexec.NewRemoteExecActionProvider("config/rpc.json")
+	if err != nil {
+		return
+	}
 
 	t.RegisterEventProvider(
 		lep,
 		ticker.NewTickerEventProvider(),
 	)
 	t.RegisterActionProvider(
+		rep,
 		meap,
 		listener.NewListenerActionProvider(),
 		localpowershell.NewLocalPowerShellActionProvider(),
