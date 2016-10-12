@@ -4,65 +4,46 @@ import (
 	"encoding/json"
 )
 
-type EventProvider interface {
-	Event(*Job, json.RawMessage, DispatchFunc) error
+type Provider interface {
+	Execute(*Job) (StateObject, error)
+	Register(*Job, json.RawMessage) error
+	New() Provider
 	Name() string
 	Cleanup()
 }
-type ActionProvider interface {
-	Action(json.RawMessage, *Job) (StateObject, error)
-	Name() string
-	Cleanup()
-}
+
 type TaskEngine struct {
-	Events  []EventProvider
-	Actions []ActionProvider
-	Jobs    []*Job
+	providers []Provider
+	Jobs      []*Job
 }
 
 func NewTaskEngine() *TaskEngine {
 	return &TaskEngine{}
 }
 
-func (t *TaskEngine) ParseJobs(path string) (err error) {
-	t.Jobs, err = ParseJobsInDirectory(t, path)
+func (te *TaskEngine) ParseJobs(path string) (err error) {
+	te.Jobs, err = ParseJobsInDirectory(te, path)
 	return
 }
 
-func (t *TaskEngine) Cleanup() {
-	for _, e := range t.Events {
-		e.Cleanup()
-	}
-	for _, a := range t.Actions {
-		a.Cleanup()
-	}
-}
-
-func (t *TaskEngine) RegisterActionProvider(provider ...ActionProvider) {
-	for _, p := range provider {
-		t.Actions = append(t.Actions, p)
-	}
-}
-
-func (t *TaskEngine) RegisterEventProvider(provider ...EventProvider) {
-	for _, p := range provider {
-		t.Events = append(t.Events, p)
-	}
-}
-
-func (t *TaskEngine) GetEventProvider(name string) EventProvider {
-	for _, e := range t.Events {
-		if e.Name() == name {
-			return e
+func (te *TaskEngine) Cleanup() {
+	for _, j := range te.Jobs {
+		for _, t := range j.Tasks {
+			t.Provider.Cleanup()
 		}
 	}
-	return nil
 }
 
-func (t *TaskEngine) GetActionProvider(name string) ActionProvider {
-	for _, e := range t.Actions {
-		if e.Name() == name {
-			return e
+func (te *TaskEngine) RegisterProvider(providers ...Provider) {
+	for _, p := range providers {
+		te.providers = append(te.providers, p)
+	}
+}
+
+func (te *TaskEngine) GetProvider(name string) Provider {
+	for _, p := range te.providers {
+		if p.Name() == name {
+			return p
 		}
 	}
 	return nil

@@ -1,7 +1,9 @@
-listener_event ListenForStuff {
+listener ListenForStuff {
+	Method: Listen
 	Path: /http
 }
-listener_action RespondWithStuff {
+listener RespondWithStuff {
+	Method: Respond
 	Headers:{
 		Content-Type: application/json
 	}

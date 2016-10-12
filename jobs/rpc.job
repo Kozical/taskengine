@@ -1,7 +1,8 @@
-listener_event ListenForConnections {
+listener ListenForConnections {
+	Method: Listen
 	Path: /getservices
 }
-remoteexec_action DoStuff {
+remoteexec DoStuff {
 	File: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
 	Args:[
 		-ExecutionPolicy
@@ -12,7 +13,8 @@ remoteexec_action DoStuff {
 		b*
 	]
 }
-listener_action Respond {
+listener Respond {
+	Method: Respond
 	Headers:{
 		Content-Type: application/json
 	}

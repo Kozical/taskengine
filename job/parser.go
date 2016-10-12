@@ -72,34 +72,21 @@ func (p *Parser) parse(te *TaskEngine) (job *Job, err error) {
 	}
 
 	job = &Job{
-		Name: p.f.Name(),
+		Name: filepath.Base(p.f.Name()),
 	}
 
 	for i, v := range obj {
-		if i == 0 {
-			eventProvider := te.GetEventProvider(v.Provider)
-			if eventProvider == nil {
-				err = fmt.Errorf("EventProvider %s not found, when reading %s", v.Provider, p.f.Name())
-				return
-			}
-			job.Event = &Event{
-				Provider: eventProvider,
-			}
-			job.Event.Properties = JSONPromote(v.Properties)
-			job.Event.Title = v.Name
-			continue
-		}
-		actionProvider := te.GetActionProvider(v.Provider)
-		if actionProvider == nil {
-			err = fmt.Errorf("ActionProvider %s not found, when reading %s", v.Provider, p.f.Name())
+		provider := te.GetProvider(v.Provider)
+		if provider == nil {
+			err = fmt.Errorf("Provider %s not found, when reading %s\n", v.Provider, p.f.Name())
 			return
 		}
-		action := &Action{
-			Provider: actionProvider,
-		}
-		action.Properties = JSONPromote(v.Properties)
-		action.Title = v.Name
-		job.Actions = append(job.Actions, action)
+		job.Tasks = append(job.Tasks, &Task{
+			Index:      i,
+			Title:      v.Name,
+			Properties: JSONPromote(v.Properties),
+			Provider:   provider.New(),
+		})
 	}
 
 	err = job.Register()
@@ -205,7 +192,6 @@ Loop:
 		buf.WriteByte('}')
 	}
 	buf.WriteByte(']')
-	fmt.Printf("json: %s\n", buf.String())
 	return buf.Bytes()
 }
 

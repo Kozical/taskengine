@@ -7,11 +7,11 @@
 // MyJobListener: listens for incoming requests on /myjob/[+id]
 
 
-event ticker Every15Seconds {
+ticker Every15Seconds {
 	Interval: 15
 	Period: Second
 }
-action mongo MyCrazyCoolOperationHappensAtThisPointInTheFile {
+mongo MyCrazyCoolOperationHappensAtThisPointInTheFile {
 	Database: build
 	Collection: razors
 	Limit: 1
