@@ -1,0 +1,22 @@
+listener ListenForConnections {
+	Method: Listen
+	Path: /getservices
+}
+localexec DoStuff {
+	File: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+	Args:[
+		-ExecutionPolicy
+		Bypass
+		-File
+		C:\temp\scripts\Get-Services.ps1
+		-Name
+		b*
+	]
+}
+listener Respond {
+	Method: Respond
+	Headers:{
+		Content-Type: application/json
+	}
+	Response: $(DoStuff.Stdout)
+}

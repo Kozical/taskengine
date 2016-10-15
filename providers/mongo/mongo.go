@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/Kozical/taskengine/job"
+	"github.com/Kozical/taskengine/core/runner"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -125,11 +125,11 @@ func (mp *MongoProvider) Cleanup() {
 	}
 }
 
-func (mp *MongoProvider) New() job.Provider {
+func (mp *MongoProvider) New() runner.Provider {
 	return &MongoProvider{}
 }
 
-func (mp *MongoProvider) Register(j *job.Job, raw json.RawMessage) (err error) {
+func (mp *MongoProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
 	err = json.Unmarshal(raw, &mp.Settings)
 	if err != nil {
 		return
@@ -146,7 +146,7 @@ func (mp *MongoProvider) Register(j *job.Job, raw json.RawMessage) (err error) {
 	return
 }
 
-func (mp *MongoProvider) Execute(j *job.Job) (s job.StateObject, err error) {
+func (mp *MongoProvider) Execute(j *runner.Job) (s runner.StateObject, err error) {
 	var query interface{}
 
 	if len(mp.Settings.Query) == 0 {

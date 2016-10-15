@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
 
-	"github.com/Kozical/taskengine/job"
+	"github.com/Kozical/taskengine/core/runner"
 )
 
 type LocalExecState struct {
@@ -24,11 +25,11 @@ func (l LocalExecState) GetProperty(property string) interface{} {
 	return nil
 }
 
-// LocalExecActionProvider: implements job.ActionProvider
+// LocalExecActionProvider: implements core.ActionProvider
 type LocalExecProvider struct {
 	Settings struct {
-		File string `json:"File"`
-		Args string `json:"Args"`
+		File string   `json:"File"`
+		Args []string `json:"Args"`
 	}
 }
 
@@ -44,11 +45,11 @@ func (lp *LocalExecProvider) Name() string {
 	return "localexec"
 }
 
-func (lp *LocalExecProvider) New() job.Provider {
+func (lp *LocalExecProvider) New() runner.Provider {
 	return &LocalExecProvider{}
 }
 
-func (lp *LocalExecProvider) Register(j *job.Job, raw json.RawMessage) (err error) {
+func (lp *LocalExecProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
 	err = json.Unmarshal(raw, &lp.Settings)
 	if err != nil {
 		return
@@ -64,10 +65,10 @@ func (lp *LocalExecProvider) Register(j *job.Job, raw json.RawMessage) (err erro
 	return
 }
 
-func (lp *LocalExecProvider) Execute(j *job.Job) (s job.StateObject, err error) {
+func (lp *LocalExecProvider) Execute(j *runner.Job) (s runner.StateObject, err error) {
 
 	var stderr, stdout bytes.Buffer
-	cmd := exec.Command(lp.Settings.File, lp.Settings.Args)
+	cmd := exec.Command(lp.Settings.File, lp.Settings.Args...)
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
 
@@ -76,7 +77,9 @@ func (lp *LocalExecProvider) Execute(j *job.Job) (s job.StateObject, err error) 
 		return
 	}
 
-	s = LocalExecState{
+	fmt.Printf("localexec executed: %s result: %s\n", lp.Settings.File, stdout.String())
+
+	s = &LocalExecState{
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
 	}

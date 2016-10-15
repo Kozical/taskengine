@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 
-	"github.com/Kozical/taskengine/job"
+	"github.com/Kozical/taskengine/core/runner"
 )
 
+var muListening sync.Mutex
+var listening bool
 var config *ListenerConfig
 
 type ListenerConfig struct {
@@ -20,7 +23,7 @@ type ListenerConfig struct {
 	CrtPath     string `json:"crt_path"`
 }
 
-// ListenerProvider: Implements the job.Provider interface
+// ListenerProvider: Implements the core.Provider interface
 type ListenerProvider struct {
 	Settings struct {
 		Method   string            `json:"Method"`
@@ -32,17 +35,17 @@ type ListenerProvider struct {
 }
 
 type ListenerState struct {
-	w http.ResponseWriter
-	r *http.Request
+	W http.ResponseWriter
+	R *http.Request
 }
 
 func (l ListenerState) GetProperty(property string) interface{} {
 
 	switch property {
-	case "w":
-		return l.w
-	case "r":
-		return l.r
+	case "W":
+		return l.W
+	case "R":
+		return l.R
 	}
 
 	return nil
@@ -63,8 +66,6 @@ func NewListenerProvider(path string) (lp *ListenerProvider, err error) {
 		err = fmt.Errorf("%s reading configuration failed", lp.Name())
 		return
 	}
-	go lp.Listen()
-
 	return
 }
 
@@ -75,11 +76,18 @@ func (lp *ListenerProvider) Name() string {
 func (lp *ListenerProvider) Cleanup() {
 }
 
-func (lp *ListenerProvider) New() job.Provider {
+func (lp *ListenerProvider) New() runner.Provider {
 	return &ListenerProvider{}
 }
 
-func (lp *ListenerProvider) Register(j *job.Job, raw json.RawMessage) (err error) {
+func (lp *ListenerProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
+	muListening.Lock()
+	if !listening {
+		listening = true
+		go lp.Listen()
+	}
+	muListening.Unlock()
+
 	err = json.Unmarshal(raw, &lp.Settings)
 	if err != nil {
 		return
@@ -98,32 +106,34 @@ func (lp *ListenerProvider) Register(j *job.Job, raw json.RawMessage) (err error
 	http.HandleFunc(lp.Settings.Path, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Request: %v\n", r.URL.String())
 		lp.State = &ListenerState{
-			w: w,
-			r: r,
+			W: w,
+			R: r,
 		}
 		j.Run(lp)
 	})
 	return nil
 }
 
-func (lp *ListenerProvider) Execute(j *job.Job) (job.StateObject, error) {
+func (lp *ListenerProvider) Execute(j *runner.Job) (runner.StateObject, error) {
 	switch lp.Settings.Method {
 	case "Listen":
+		fmt.Printf("Getting State: lp(%d)\n", &*lp)
 		return lp.State, nil
 	case "Respond":
-		fmt.Printf("Calling respond\n")
+		fmt.Printf("Calling respond: lp(%d)\n", &*lp)
 		return lp.Respond(j)
 	}
 	return nil, fmt.Errorf("Method not found %s", lp.Settings.Method)
 }
 
-func (lp *ListenerProvider) Respond(j *job.Job) (s job.StateObject, err error) {
-	for _, t := range j.Tasks {
-		if t.Provider.Name() == lp.Name() && t.Provider != lp {
-			lp.State = t.State.(*ListenerState)
+func (lp *ListenerProvider) Respond(j *runner.Job) (s runner.StateObject, err error) {
+	/*
+		for _, t := range j.Tasks {
+			if t.Provider.Name() == lp.Name() && t.Provider != lp {
+				lp.State = t.State.(*ListenerState)
+			}
 		}
-	}
-
+	*/
 	if lp.State == nil {
 		err = errors.New("ListenerProvider Respond can only be used with the corresponding Listen provider")
 		return
@@ -133,15 +143,15 @@ func (lp *ListenerProvider) Respond(j *job.Job) (s job.StateObject, err error) {
 	fmt.Printf("Sending response: %s\n", response)
 
 	for k, v := range lp.Settings.Headers {
-		lp.State.w.Header().Add(k, v)
+		lp.State.W.Header().Add(k, v)
 	}
 	var n int
-	n, err = lp.State.w.Write([]byte(response))
+	n, err = lp.State.W.Write(response)
 	if err != nil {
 		return
 	}
 	if n < len(response) {
-		err = fmt.Errorf("Write zero bytes to http.ResponseWriter, Response: %s\n", lp.Settings.Response)
+		err = fmt.Errorf("Wrote the wrong amount of bytes to http.ResponseWriter, Response: %s\n", lp.Settings.Response)
 		return
 	}
 	s = lp.State
@@ -149,6 +159,7 @@ func (lp *ListenerProvider) Respond(j *job.Job) (s job.StateObject, err error) {
 }
 
 func (lp *ListenerProvider) Listen() {
+	fmt.Printf("Listening on 8081\n")
 	if config.UseTLS {
 		err := http.ListenAndServeTLS(fmt.Sprintf("%s:%d", config.BindAddress, config.BindPort), config.CrtPath, config.KeyPath, nil)
 		if err != nil {

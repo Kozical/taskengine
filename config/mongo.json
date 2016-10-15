@@ -1,9 +1,0 @@
-{
-	"addrs":["self.lab.local"],
-	"port": 27017,
-	"user":"admin",
-	"pass":"admin",
-	"use_tls": true,
-	"use_insecure_tls": false,
-	"ca_path": "ssl/ca.pem"
-}

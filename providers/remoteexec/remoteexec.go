@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Kozical/taskengine/job"
+	"github.com/Kozical/taskengine/core/runner"
 )
 
 var config RemoteExecConfig
@@ -46,7 +46,7 @@ func (res RemoteExecState) GetProperty(property string) interface{} {
 	return ""
 }
 
-// RemoteExecProvider: implements job.Provider
+// RemoteExecProvider: implements core.Provider
 type RemoteExecProvider struct {
 	Settings struct {
 		File string   `json:"File"`
@@ -108,7 +108,7 @@ func (rep *RemoteExecProvider) Name() string {
 	return "remoteexec"
 }
 
-func (rep *RemoteExecProvider) Register(j *job.Job, raw json.RawMessage) (err error) {
+func (rep *RemoteExecProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
 	err = json.Unmarshal(raw, &rep.Settings)
 	if err != nil {
 		return
@@ -124,11 +124,11 @@ func (rep *RemoteExecProvider) Register(j *job.Job, raw json.RawMessage) (err er
 	return
 }
 
-func (rep *RemoteExecProvider) New() job.Provider {
+func (rep *RemoteExecProvider) New() runner.Provider {
 	return &RemoteExecProvider{}
 }
 
-func (rep *RemoteExecProvider) Execute(j *job.Job) (s job.StateObject, err error) {
+func (rep *RemoteExecProvider) Execute(j *runner.Job) (s runner.StateObject, err error) {
 	var conn *tls.Conn
 	conn, err = tls.Dial("tcp", fmt.Sprintf("%s:%d", config.Addr, config.Port), tlsConfig)
 	if err != nil {

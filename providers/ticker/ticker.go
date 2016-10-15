@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Kozical/taskengine/job"
+	"github.com/Kozical/taskengine/core/runner"
 )
 
 var tickerLock sync.Mutex
@@ -23,7 +23,7 @@ type Provider interface {
 }
 */
 
-// TickerState: implements job.StateObject interface
+// TickerState: implements core.StateObject interface
 type TickerState struct {
 	Time time.Time
 }
@@ -32,7 +32,7 @@ func (t TickerState) GetProperty(name string) interface{} {
 	return name
 }
 
-// TickerProvider: implements job.Provider interface
+// TickerProvider: implements core.Provider interface
 type TickerProvider struct {
 	Settings struct {
 		Interval string `json:"Interval"`
@@ -62,11 +62,11 @@ func (tp *TickerProvider) Name() string {
 	return "ticker"
 }
 
-func (tp *TickerProvider) New() job.Provider {
+func (tp *TickerProvider) New() runner.Provider {
 	return &TickerProvider{}
 }
 
-func (tp *TickerProvider) Register(j *job.Job, raw json.RawMessage) (err error) {
+func (tp *TickerProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
 	err = json.Unmarshal(raw, &tp.Settings)
 	if err != nil {
 		return
@@ -100,14 +100,14 @@ func (tp *TickerProvider) Register(j *job.Job, raw json.RawMessage) (err error) 
 
 //Execute(*Job) (StateObject, error)
 
-func (tp *TickerProvider) Execute(j *job.Job) (state job.StateObject, err error) {
+func (tp *TickerProvider) Execute(j *runner.Job) (state runner.StateObject, err error) {
 	ticker := time.NewTicker(time.Duration(tp.interval * tp.period))
 
 	tickerLock.Lock()
 	tickers = append(tickers, ticker)
 	tickerLock.Unlock()
 
-	go func(C <-chan time.Time, j *job.Job) {
+	go func(C <-chan time.Time, j *runner.Job) {
 		for {
 			select {
 			case t, ok := <-C:
