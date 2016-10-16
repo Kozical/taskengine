@@ -9,12 +9,62 @@ import (
 )
 
 type Provider interface {
-	Execute(*Job) (StateObject, error)
-	Register(*Job, json.RawMessage) error
-	New() Provider
-	Name() string
-	Cleanup()
+	Execute(*Job) error
 }
+
+type EventProvider interface {
+	Register(func() *Job)
+}
+
+type Task struct {
+	Title      string
+	Properties json.RawMessage
+	Provider   Provider
+}
+
+func (t Task) String() string {
+	return fmt.Sprintf("Task{Title: %q, Properties: %q, Provider: %q}\n", t.Title, t.Properties, t.Provider)
+}
+
+type Job struct {
+	ID    int
+	State map[string]func() interface{}
+	Tasks []Task
+}
+
+func (j *Job) String() string {
+	return fmt.Sprintf("Job{ID: %d, State: %v, Tasks[%s]}\n", j.ID, j.State, j.Tasks)
+}
+
+func (j *Job) Store(key string, fn func() interface{}) {
+	j.State[key] = fn
+}
+
+func (j *Job) Run() {
+	go func() {
+		for _, t := range j.Tasks {
+			err := t.Provider.Execute(j)
+			if err != nil {
+				fmt.Printf("Error while executing %s -> %v\n", t.Title, err)
+				break
+			}
+		}
+		fmt.Println(j)
+	}()
+}
+
+func JobFactory() func(int, []Task) func() *Job {
+	id := 0
+	return func(i int, tasks []Task) func() *Job {
+		return func() *Job {
+			j := &Job{id, make(map[string]func() interface{}), tasks[i:]}
+			id += 1
+			return j
+		}
+	}
+}
+
+/*
 
 //type EventFunc func(*Job, json.RawMessage, DispatchFunc) error
 //type ActionFunc func(json.RawMessage, *Job) (StateObject, error)
@@ -27,8 +77,8 @@ type Task struct {
 	Index      int
 	Title      string
 	Properties json.RawMessage
-	State      StateObject
-	Provider   Provider
+	//State      StateObject
+	Provider Provider
 }
 
 type Job struct {
@@ -36,7 +86,14 @@ type Job struct {
 	Tasks []*Task
 }
 
-func (j *Job) GetProperty(title, property string) interface{} {
+func (j *Job) GetProperty(title, property string, chain StateSegment) interface{} {
+	var state StateSegment
+	state = chain
+
+	for state.Previous != nil {
+
+		state = state.Previous
+	}
 	for _, t := range j.Tasks {
 		if t.Title == title {
 			return t.State.GetProperty(property)
@@ -65,26 +122,37 @@ func (j *Job) GetStateByResourceTitle(name string) StateObject {
 	return nil
 }
 
-func (j *Job) Run(provider Provider) (err error) {
+func (j *Job) Run(provider Provider, initial StateSegment) (err error) {
 	var match bool
-	for _, t := range j.Tasks {
+	var chain StateSegment
+	// listener ListenForConnections
+	// localexec DoStuff
+	// listener Respond
+	chain = initial
+	for i, t := range j.Tasks {
 		if provider == t.Provider {
 			match = true
+			continue
 		}
 		if match {
+			fmt.Printf("RUN[%d]: %s -> %s\n", i, t.Title, t.Properties)
 			var state StateObject
-			state, err = t.Provider.Execute(j)
+			state, err = t.Provider.Execute(j, chain)
 			if err != nil {
 				fmt.Printf("Error while executing %s::%s -> %v\n", t.Provider.Name(), t.Title, err)
 				break
 			}
 			fmt.Printf("Task: %s State: %v\n", t.Title, t.State)
-			t.State = state
+			chain = StateSegment{
+				Previous: &chain,
+				State:    state,
+			}
+			//t.State = state
 		}
 	}
 	return nil
 }
-
+*/
 type stateParser struct {
 	input  string
 	output bytes.Buffer
@@ -108,15 +176,10 @@ func (s *stateParser) next() rune {
 
 func (s *stateParser) getStateProperty(exp string, j *Job) (property string, ok bool) {
 	fmt.Printf("Getting property %s\n", exp)
-	parts := strings.Split(exp, ".")
-	if len(parts) > 1 {
-		state := j.GetStateByResourceTitle(parts[0])
-		if state != nil {
-			ok = true
-			property = state.GetProperty(strings.Join(parts[1:], ".")).(string)
-		} else {
-			fmt.Printf("State was nil: %v\n", parts)
-		}
+	if val, exists := j.State[exp]; exists {
+		ok = true
+		property = fmt.Sprint(val())
+		return
 	}
 	return
 }

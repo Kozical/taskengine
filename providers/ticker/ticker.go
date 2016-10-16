@@ -2,7 +2,7 @@ package ticker
 
 import (
 	"encoding/json"
-	"errors"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -14,23 +14,16 @@ var tickerLock sync.Mutex
 var tickers []*time.Ticker
 
 /*
+
 type Provider interface {
-	Execute(*Job) (StateObject, error)
-	Register(*Job, json.RawMessage) error
-	New() Provider
-	Name() string
-	Cleanup()
+	Execute(*Job) error
 }
+
+type EventProvider interface {
+	Register(func() *Job)
+}
+
 */
-
-// TickerState: implements core.StateObject interface
-type TickerState struct {
-	Time time.Time
-}
-
-func (t TickerState) GetProperty(name string) interface{} {
-	return name
-}
 
 // TickerProvider: implements core.Provider interface
 type TickerProvider struct {
@@ -43,37 +36,34 @@ type TickerProvider struct {
 }
 
 func NewTickerProvider() *TickerProvider {
-	return &TickerProvider{}
+	return new(TickerProvider)
 }
 
-func (tp *TickerProvider) Cleanup() {
-	tickerLock.Lock()
-	defer tickerLock.Unlock()
+func (tp *TickerProvider) Execute(j *runner.Job) error {
+	return nil
+}
 
-	for i := len(tickers); i >= 0; i-- {
-		if tickers[i] != nil {
-			tickers[i].Stop()
-			tickers[i] = nil
+func (tp *TickerProvider) Register(fn func() *runner.Job) {
+	var err error
+	job := fn()
+
+	var task *runner.Task
+	for _, t := range job.Tasks {
+		if t.Provider == tp {
+			task = &t
+			break
 		}
 	}
-}
 
-func (tp *TickerProvider) Name() string {
-	return "ticker"
-}
-
-func (tp *TickerProvider) New() runner.Provider {
-	return &TickerProvider{}
-}
-
-func (tp *TickerProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
-	err = json.Unmarshal(raw, &tp.Settings)
+	err = json.Unmarshal(task.Properties, &tp.Settings)
 	if err != nil {
+		log.Printf("Failed to unmarshal TickerProvider properties -> %v\n", err)
 		return
 	}
 	if len(tp.Settings.Interval) > 0 {
 		tp.interval, err = strconv.Atoi(tp.Settings.Interval)
 		if err != nil {
+			log.Printf("Failed to convert Interval to integer -> %v\n", err)
 			return
 		}
 	}
@@ -92,35 +82,21 @@ func (tp *TickerProvider) Register(j *runner.Job, raw json.RawMessage) (err erro
 		tp.period = int(time.Second)
 	}
 	if tp.interval == 0 {
-		err = errors.New("Interval must be set on ticker")
+		log.Println("Interval must be set on TickerProvider")
 		return
 	}
-	return
-}
 
-//Execute(*Job) (StateObject, error)
-
-func (tp *TickerProvider) Execute(j *runner.Job) (state runner.StateObject, err error) {
 	ticker := time.NewTicker(time.Duration(tp.interval * tp.period))
 
-	tickerLock.Lock()
-	tickers = append(tickers, ticker)
-	tickerLock.Unlock()
-
-	go func(C <-chan time.Time, j *runner.Job) {
+	func(C <-chan time.Time, j *runner.Job) {
 		for {
 			select {
-			case t, ok := <-C:
+			case _, ok := <-C:
 				if !ok {
 					return
 				}
-				state = TickerState{
-					Time: t,
-				}
-				j.Run(tp)
+				j.Run()
 			}
 		}
-	}(ticker.C, j)
-
-	return
+	}(ticker.C, job)
 }

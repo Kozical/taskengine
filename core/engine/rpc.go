@@ -104,10 +104,11 @@ type RPCClient struct {
 
 var ErrorZeroAttempts = errors.New("Zero")
 
-func NewRPCClient(min, max int, endpoint string, tlsConfig *tls.Config) (clt RPCClient) {
-	clt = RPCClient{
+func NewRPCClient(min, max int, endpoint string, tlsConfig *tls.Config) (clt *RPCClient) {
+	clt = &RPCClient{
 		endpoint: endpoint,
 		quit:     make(chan bool, 1),
+		lastPong: time.Now(),
 		pool: NewConnPool(
 			min,
 			max,
@@ -184,16 +185,29 @@ func (r RPCClient) Close() {
 }
 
 type RPCMgr struct {
-	Clients []RPCClient
+	muClients    sync.Mutex
+	Clients      []*RPCClient
+	ReadyClients []*RPCClient
+
+	Assignments map[*RPCClient][]*core.RPCJob
 
 	muNextClient sync.Mutex
-	nextClient   int64
+	nextClient   int
 }
 
 func NewRPCMgr(poolsize int, endpoints []string, tlsConfig *tls.Config) (mgr *RPCMgr) {
-	mgr = new(RPCMgr)
+	mgr = &RPCMgr{
+		Assignments: make(map[*RPCClient][]*core.RPCJob),
+	}
 	for _, e := range endpoints {
-		mgr.Clients = append(mgr.Clients, NewRPCClient(poolsize, poolsize, e, tlsConfig))
+		go func(endpoint string) {
+			c := NewRPCClient(poolsize, poolsize, endpoint, tlsConfig)
+
+			mgr.muClients.Lock()
+			mgr.Clients = append(mgr.Clients, c)
+			mgr.ReadyClients = append(mgr.Clients, c)
+			mgr.muClients.Unlock()
+		}(e)
 	}
 	return
 }
@@ -202,26 +216,58 @@ func (mgr *RPCMgr) NextClient() (clt *RPCClient) {
 	// boring round-robin.. maybe we can do better?
 	// probably also only want to assign RPCClients that are 'Ready()'
 	mgr.muNextClient.Lock()
-	clt = &mgr.Clients[mgr.nextClient]
-	mgr.nextClient++
-	if mgr.nextClient > int64(len(mgr.Clients)) {
-		mgr.nextClient = 0
+	mgr.muClients.Lock()
+	defer mgr.muClients.Unlock()
+	defer mgr.muNextClient.Unlock()
+
+	if len(mgr.ReadyClients) == 0 {
+		return nil
 	}
-	mgr.muNextClient.Unlock()
+
+	failures := 0
+	for {
+		clt = mgr.ReadyClients[mgr.nextClient%len(mgr.ReadyClients)]
+		mgr.nextClient++
+
+		if clt.Ready() || failures > 3 {
+			break
+		}
+		failures++
+	}
+
 	log.Printf("NextClient: %v\n", clt)
 	return
 }
+
+func (mgr *RPCMgr) MoveJobs(client *RPCClient) {
+	if client.Ready() {
+		return
+	}
+	for i, c := range mgr.ReadyClients {
+		if c == client {
+			mgr.muClients.Lock()
+			mgr.ReadyClients = append(mgr.ReadyClients[:i], mgr.ReadyClients[i+1:]...)
+			mgr.muClients.Unlock()
+		}
+	}
+	for _, assignment := range mgr.Assignments[client] {
+		mgr.DispatchJob(assignment)
+	}
+}
+
 func (mgr *RPCMgr) DispatchJob(job *core.RPCJob) (err error) {
 	var buf []byte
 	client := mgr.NextClient()
 	if client == nil {
 		err = errors.New("NextClient() was nil")
+		return
 	}
 	err = client.Call("RPCTask.Dispatch", job, &buf)
 	if err != nil {
 		log.Printf("Failed to dispatch job %s -> %v\n", job.Name, err)
 		return
 	}
+	mgr.Assignments[client] = append(mgr.Assignments[client], job)
 	return
 }
 

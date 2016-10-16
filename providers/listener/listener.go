@@ -6,167 +6,166 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sync"
+	//	"reflect"
+	//	"sync"
 
 	"github.com/Kozical/taskengine/core/runner"
 )
 
-var muListening sync.Mutex
-var listening bool
-var config *ListenerConfig
-
-type ListenerConfig struct {
-	BindAddress string `json:"bind_addr"`
-	BindPort    int    `json:"bind_port"`
-	UseTLS      bool   `json:"use_tls"`
-	KeyPath     string `json:"key_path"`
-	CrtPath     string `json:"crt_path"`
-}
-
 // ListenerProvider: Implements the core.Provider interface
 type ListenerProvider struct {
+	Title      string
+	Properties map[string]string
+	Config     struct {
+		BindAddress string `json:"bind_addr"`
+		BindPort    int    `json:"bind_port"`
+		UseTLS      bool   `json:"use_tls"`
+		KeyPath     string `json:"key_path"`
+		CrtPath     string `json:"crt_path"`
+	}
 	Settings struct {
 		Method   string            `json:"Method"`
 		Path     string            `json:"Path"`
 		Headers  map[string]string `json:"Headers"`
 		Response string            `json:"Response"`
 	}
-	State *ListenerState
-}
-
-type ListenerState struct {
-	W http.ResponseWriter
-	R *http.Request
-}
-
-func (l ListenerState) GetProperty(property string) interface{} {
-
-	switch property {
-	case "W":
-		return l.W
-	case "R":
-		return l.R
-	}
-
-	return nil
 }
 
 func NewListenerProvider(path string) (lp *ListenerProvider, err error) {
-	lp = new(ListenerProvider)
+	lp = &ListenerProvider{}
 
 	var f *os.File
 	f, err = os.Open(path)
 	if err != nil {
-		err = fmt.Errorf("%s opening configuration failed", lp.Name())
+		err = fmt.Errorf("ListenerProvider opening configuration failed")
 		return
 	}
 	dec := json.NewDecoder(f)
-	err = dec.Decode(&config)
+	err = dec.Decode(&lp.Config)
 	if err != nil {
-		err = fmt.Errorf("%s reading configuration failed", lp.Name())
+		err = fmt.Errorf("ListenerProvider reading configuration failed")
 		return
 	}
+	go lp.Listen()
 	return
 }
 
-func (lp *ListenerProvider) Name() string {
-	return "listener"
+func (lp *ListenerProvider) String() string {
+	return fmt.Sprintf("ListenerProvider{Title: %s, Properties: %v}\n", lp.Title, lp.Properties)
 }
 
-func (lp *ListenerProvider) Cleanup() {
-}
-
-func (lp *ListenerProvider) New() runner.Provider {
-	return &ListenerProvider{}
-}
-
-func (lp *ListenerProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
-	muListening.Lock()
-	if !listening {
-		listening = true
-		go lp.Listen()
+func (lp *ListenerProvider) Execute(j *runner.Job) error {
+	switch lp.Settings.Method {
+	case "Respond":
+		return lp.Respond(j)
+	case "Listen":
+		return nil
+	default:
+		return errors.New("Method not implemented in ListenerProvider")
 	}
-	muListening.Unlock()
+}
 
-	err = json.Unmarshal(raw, &lp.Settings)
+func (lp *ListenerProvider) Register(fn func() *runner.Job) {
+	fmt.Println("ListenerProvider Register() called")
+	job := fn()
+
+	var task *runner.Task
+	for _, t := range job.Tasks {
+		if t.Provider == lp {
+			task = &t
+			break
+		}
+	}
+	if task == nil {
+		fmt.Printf("ListenerProvider.Register() task was nil")
+		return
+	}
+	fmt.Println(task, lp)
+	err := json.Unmarshal(task.Properties, &lp.Settings)
 	if err != nil {
+		fmt.Printf("Failed to unmarshal ListenerProvider Properties\n")
 		return
 	}
 	if len(lp.Settings.Method) == 0 {
-		err = errors.New("Method parameter must be provided to Listener Provider!")
+		fmt.Printf("Method parameter must be provided to Listener Provider!\n")
 		return
 	}
-	if lp.Settings.Method != "Listen" {
-		return nil
-	}
-	if len(lp.Settings.Path) == 0 {
-		err = errors.New("Path parameter not provided to Listener Provider!")
-		return
-	}
-	http.HandleFunc(lp.Settings.Path, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("Request: %v\n", r.URL.String())
-		lp.State = &ListenerState{
-			W: w,
-			R: r,
-		}
-		j.Run(lp)
-	})
-	return nil
-}
+	lp.Properties = make(map[string]string)
 
-func (lp *ListenerProvider) Execute(j *runner.Job) (runner.StateObject, error) {
+	for _, name := range []string{"W", "R", "Closer"} {
+		lp.Properties[name] = fmt.Sprintf("%s.%s", task.Title, name)
+	}
+
+	lp.Title = task.Title
+
 	switch lp.Settings.Method {
 	case "Listen":
-		fmt.Printf("Getting State: lp(%d)\n", &*lp)
-		return lp.State, nil
+		lp.RegisterListen(task, fn)
 	case "Respond":
-		fmt.Printf("Calling respond: lp(%d)\n", &*lp)
-		return lp.Respond(j)
-	}
-	return nil, fmt.Errorf("Method not found %s", lp.Settings.Method)
-}
-
-func (lp *ListenerProvider) Respond(j *runner.Job) (s runner.StateObject, err error) {
-	/*
-		for _, t := range j.Tasks {
-			if t.Provider.Name() == lp.Name() && t.Provider != lp {
-				lp.State = t.State.(*ListenerState)
-			}
-		}
-	*/
-	if lp.State == nil {
-		err = errors.New("ListenerProvider Respond can only be used with the corresponding Listen provider")
+		lp.RegisterRespond(task, fn)
+	default:
 		return
 	}
+}
+
+func (lp *ListenerProvider) RegisterRespond(t *runner.Task, fn func() *runner.Job) {
+
+}
+func (lp *ListenerProvider) RegisterListen(t *runner.Task, fn func() *runner.Job) {
+	if len(lp.Settings.Path) == 0 {
+		fmt.Printf("Path parameter not provided to Listener Provider!")
+		return
+	}
+	fmt.Println("ListenerProvider RegisterListener() called")
+	http.HandleFunc(lp.Settings.Path, func(w http.ResponseWriter, r *http.Request) {
+		j := fn()
+		closer := make(chan struct{}, 0)
+		for k, _ := range r.URL.Query() {
+			j.Store(fmt.Sprintf("%s.URL.%s", lp.Title, k), func() interface{} {
+				key := k
+				return j.State[lp.Properties["R"]]().(*http.Request).URL.Query()[key][0]
+			})
+		}
+
+		j.Store(lp.Properties["W"], func() interface{} { return w })
+		j.Store(lp.Properties["R"], func() interface{} { return r })
+		j.Store(lp.Properties["Closer"], func() interface{} {
+			closer <- struct{}{}
+			return nil
+		})
+		fmt.Printf("Request Received: %v\n", r.URL.String())
+
+		j.Run()
+		<-closer
+	})
+}
+
+func (lp *ListenerProvider) Respond(j *runner.Job) (err error) {
+	w := j.State[lp.Properties["W"]]().(http.ResponseWriter)
+
 	response := j.InterpolateState(lp.Settings.Response)
 
 	fmt.Printf("Sending response: %s\n", response)
 
 	for k, v := range lp.Settings.Headers {
-		lp.State.W.Header().Add(k, v)
+		w.Header().Add(k, v)
 	}
-	var n int
-	n, err = lp.State.W.Write(response)
-	if err != nil {
-		return
-	}
-	if n < len(response) {
-		err = fmt.Errorf("Wrote the wrong amount of bytes to http.ResponseWriter, Response: %s\n", lp.Settings.Response)
-		return
-	}
-	s = lp.State
+
+	_, err = w.Write(response)
+
+	j.State[lp.Properties["Closer"]]()
 	return
 }
 
 func (lp *ListenerProvider) Listen() {
 	fmt.Printf("Listening on 8081\n")
-	if config.UseTLS {
-		err := http.ListenAndServeTLS(fmt.Sprintf("%s:%d", config.BindAddress, config.BindPort), config.CrtPath, config.KeyPath, nil)
+	if lp.Config.UseTLS {
+		err := http.ListenAndServeTLS(fmt.Sprintf("%s:%d", lp.Config.BindAddress, lp.Config.BindPort), lp.Config.CrtPath, lp.Config.KeyPath, nil)
 		if err != nil {
 			panic(fmt.Errorf("ListenAndServeTLS failed -> %v\n", err))
 		}
 	} else {
-		err := http.ListenAndServe(fmt.Sprintf("%s:%d", config.BindAddress, config.BindPort), nil)
+		err := http.ListenAndServe(fmt.Sprintf("%s:%d", lp.Config.BindAddress, lp.Config.BindPort), nil)
 		if err != nil {
 			panic(fmt.Errorf("ListenAndServe failed -> %v\n", err))
 		}

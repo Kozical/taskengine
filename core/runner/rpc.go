@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"reflect"
 	"sync/atomic"
 	"syscall"
 
@@ -93,40 +94,29 @@ func (r RPCTask) Ping(req *[]byte, res *[]byte) (err error) {
 }
 
 func (r RPCTask) Dispatch(j *core.RPCJob, res *[]byte) (err error) {
-	job := &Job{
-		Name: j.Name,
-	}
+	var tasks []Task
 
-	for i, v := range j.Objects {
-		provider := r.T.GetProvider(v.Provider)
-		if provider == nil {
+	for _, v := range j.Objects {
+		base := r.T.GetProvider(v.Provider)
+		if base == nil {
 			err = fmt.Errorf("Provider %s not found\n", v.Provider)
 			return
 		}
-		var provAddr Provider
-		for _, t := range job.Tasks {
-			if t.Provider.Name() == v.Provider {
-				// If we have already instiated one of this provider
-				// type then we want to assign all subsequent references
-				// within this job to the same instance
-				// this allows providers to reuse the same state
-				// from a previous call (ie: HTTP Request and Response)
-				provAddr = t.Provider
-				break
-			}
-		}
-		if provAddr == nil {
-			provAddr = provider.New()
-		}
-		job.Tasks = append(job.Tasks, &Task{
-			Index:      i,
+		var provider Provider
+		provider = reflect.New(reflect.ValueOf(base).Elem().Type()).Interface().(Provider)
+		tasks = append(tasks, Task{
 			Title:      v.Name,
 			Properties: core.JSONPromote(v.Properties),
-			Provider:   provAddr,
+			Provider:   provider,
 		})
 	}
+	factory := JobFactory()
 
-	err = job.Register()
+	for i, t := range tasks {
+		if event, ok := t.Provider.(EventProvider); ok {
+			go event.Register(factory(i, tasks))
+		}
+	}
 	return
 }
 

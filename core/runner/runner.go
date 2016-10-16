@@ -1,35 +1,21 @@
 package runner
 
 import (
-	"crypto/tls"
+	"fmt"
+	"reflect"
+	"strings"
 )
 
 type Runner struct {
 	providers []Provider
-	Jobs      []*Job
 }
 
-func NewRunner(poolsize int, endpoints []string, tlsConfig *tls.Config) (r *Runner) {
+func NewRunner() (r *Runner) {
 	r = new(Runner)
 	return
 }
 
-func (r *Runner) Cleanup() {
-	/*
-		Cleanup no longer happens here
-		Perhaps we can use a new RPCTask
-		Function to dispatch a shutdown
-		but do we want the runners to
-		stop because we are?
-	*/
-	for _, j := range r.Jobs {
-		for _, t := range j.Tasks {
-			t.Provider.Cleanup()
-		}
-	}
-}
-
-func (r *Runner) RegisterProvider(providers ...Provider) {
+func (r *Runner) RegisterProviders(providers ...Provider) {
 	for _, p := range providers {
 		r.providers = append(r.providers, p)
 	}
@@ -37,7 +23,7 @@ func (r *Runner) RegisterProvider(providers ...Provider) {
 
 func (r *Runner) GetProvider(name string) Provider {
 	for _, p := range r.providers {
-		if p.Name() == name {
+		if strings.HasSuffix(strings.ToLower(reflect.TypeOf(p).String()), fmt.Sprintf("%s%s", strings.ToLower(name), "provider")) {
 			return p
 		}
 	}

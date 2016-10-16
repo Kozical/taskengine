@@ -24,7 +24,7 @@ func main() {
 		panic(err)
 	}
 
-	endpoints := []string{"self.lab.local:8103", "self.lab.local:8104", "self.lab.local:8105"}
+	endpoints := []string{"self.lab.local:8103"}
 
 	mgr := engine.NewRPCMgr(15, endpoints, tlsConfig)
 	defer mgr.Cleanup()
@@ -34,6 +34,12 @@ func main() {
 		panic(err)
 	}
 
+	//Implement Job queuing and job assignment
+	//after clients become available
+	//Started using go-routine to connect to runners
+	//will need to implement better 'watching' routine
+	//so that we can identify when a 'dead' node comes back
+	//online and throw him back into the rotation
 	err = mgr.DispatchJobs(jobs)
 	if err != nil {
 		panic(err)

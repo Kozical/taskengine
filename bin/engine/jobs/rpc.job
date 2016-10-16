@@ -10,10 +10,10 @@ localexec DoStuff {
 		-File
 		C:\temp\scripts\Get-Services.ps1
 		-Name
-		b*
+		$(ListenForConnections.URL.service)
 	]
 }
-listener Respond {
+listener ListenForConnections {
 	Method: Respond
 	Headers:{
 		Content-Type: application/json

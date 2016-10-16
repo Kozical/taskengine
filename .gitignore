@@ -1,2 +1,4 @@
 /bin/runner/*.exe
+/bin/engine/*.exe
+/bin/runner/*.exe~
 /bin/engine/*.exe~

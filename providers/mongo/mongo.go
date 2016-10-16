@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -15,18 +16,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-var config MongoConfig
 var session *mgo.Session
-
-type MongoConfig struct {
-	Addrs          []string `json:"addrs"`
-	Port           int      `json:"port"`
-	User           string   `json:"user"`
-	Pass           string   `json:"pass"`
-	UseTLS         bool     `json:"use_tls"`
-	UseInsecureTLS bool     `json:"use_insecure_tls"`
-	CAPath         string   `json:"ca_path"`
-}
 
 /*
 type Provider interface {
@@ -38,18 +28,17 @@ type Provider interface {
 }
 */
 
-type MongoState struct {
-	Result string
-}
-
-func (m MongoState) GetProperty(property string) interface{} {
-	if property == "Result" {
-		return m.Result
-	}
-	return ""
-}
-
 type MongoProvider struct {
+	Properties map[string]string
+	Config     struct {
+		Addrs          []string `json:"addrs"`
+		Port           int      `json:"port"`
+		User           string   `json:"user"`
+		Pass           string   `json:"pass"`
+		UseTLS         bool     `json:"use_tls"`
+		UseInsecureTLS bool     `json:"use_insecure_tls"`
+		CAPath         string   `json:"ca_path"`
+	}
 	Settings struct {
 		Database   string            `json:"Database"`
 		Collection string            `json:"Collection"`
@@ -62,7 +51,6 @@ type MongoProvider struct {
 
 func NewMongoProvider(path string) (mp *MongoProvider, err error) {
 	mp = new(MongoProvider)
-
 	var f *os.File
 	f, err = os.Open(path)
 	if err != nil {
@@ -72,28 +60,28 @@ func NewMongoProvider(path string) (mp *MongoProvider, err error) {
 
 	d := json.NewDecoder(f)
 
-	err = d.Decode(&config)
+	err = d.Decode(&mp.Config)
 	if err != nil {
 		return
 	}
 
 	info := &mgo.DialInfo{
-		Addrs:    config.Addrs,
-		Username: config.User,
-		Password: config.Pass,
+		Addrs:    mp.Config.Addrs,
+		Username: mp.Config.User,
+		Password: mp.Config.Pass,
 		FailFast: true,
 	}
 
-	if config.UseTLS {
+	if mp.Config.UseTLS {
 		var tlsConfig *tls.Config
-		if config.UseInsecureTLS {
+		if mp.Config.UseInsecureTLS {
 			tlsConfig = &tls.Config{
 				InsecureSkipVerify: true,
 			}
 		} else {
 			var b []byte
 			pool := x509.NewCertPool()
-			b, err = ioutil.ReadFile(config.CAPath)
+			b, err = ioutil.ReadFile(mp.Config.CAPath)
 			if err != nil {
 				return
 			}
@@ -114,39 +102,23 @@ func NewMongoProvider(path string) (mp *MongoProvider, err error) {
 	return
 }
 
-func (mp *MongoProvider) Name() string {
-	return "mongo"
-}
-
-func (mp *MongoProvider) Cleanup() {
-	if session != nil {
-		session.Close()
-		session = nil
+func (mp *MongoProvider) Execute(j *runner.Job) (err error) {
+	var task *runner.Task
+	for _, t := range j.Tasks {
+		if t.Provider == mp {
+			task = &t
+			break
+		}
 	}
-}
-
-func (mp *MongoProvider) New() runner.Provider {
-	return &MongoProvider{}
-}
-
-func (mp *MongoProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
-	err = json.Unmarshal(raw, &mp.Settings)
-	if err != nil {
+	if task == nil {
+		err = errors.New("MongoProvider received a nil task")
 		return
 	}
 
-	if len(mp.Settings.Database) == 0 {
-		err = errors.New("Database parameter not provided to Datastore")
-		return
+	for _, name := range []string{"Result"} {
+		mp.Properties[name] = fmt.Sprintf("%s.%s", task.Title, name)
 	}
-	if len(mp.Settings.Collection) == 0 {
-		err = errors.New("Collection parameter not provided to Datastore")
-		return
-	}
-	return
-}
 
-func (mp *MongoProvider) Execute(j *runner.Job) (s runner.StateObject, err error) {
 	var query interface{}
 
 	if len(mp.Settings.Query) == 0 {
@@ -179,8 +151,7 @@ func (mp *MongoProvider) Execute(j *runner.Job) (s runner.StateObject, err error
 	if err != nil {
 		return
 	}
-	s = MongoState{
-		Result: string(b),
-	}
+
+	j.State[mp.Properties["Result"]] = func() interface{} { return string(b) }
 	return
 }

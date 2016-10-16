@@ -17,19 +17,20 @@ import (
 	"github.com/Kozical/taskengine/providers/listener"
 	"github.com/Kozical/taskengine/providers/localexec"
 	"github.com/Kozical/taskengine/providers/mongo"
-	"github.com/Kozical/taskengine/providers/remoteexec"
 	"github.com/Kozical/taskengine/providers/ticker"
 )
 
 func main() {
 
 	port := flag.Int("port", 8103, "specify the port that should be used for this runner [default: 8103]")
+	listenerPath := flag.String("listener", "config/listener.json", "specify the path to the listener config [default: config/listener.json]")
+	mongoPath := flag.String("mongo", "config/mongo.json", "specify the path to the mongo config [default: config/mongo.json]")
+
 	flag.Parse()
 
 	t := new(runner.Runner)
-	defer t.Cleanup()
 
-	err := RegisterProviders(t)
+	err := RegisterProviders(t, *mongoPath, *listenerPath)
 	if err != nil {
 		panic(err)
 	}
@@ -92,26 +93,26 @@ func ReadConfiguration() (tlsConfig *tls.Config, err error) {
 	return
 }
 
-func RegisterProviders(r *runner.Runner) (err error) {
-	var lp, mp, rp runner.Provider
+func RegisterProviders(r *runner.Runner, mongoPath, listenerPath string) (err error) {
+	var lp, mp runner.Provider
 
-	lp, err = listener.NewListenerProvider("config/listener.json")
-	if err != nil {
-		return
-	}
-	mp, err = mongo.NewMongoProvider("config/mongo.json")
-	if err != nil {
-		return
-	}
-	rp, err = remoteexec.NewRemoteExecProvider("config/rpc.json")
-	if err != nil {
-		return
+	if _, err = os.Stat(listenerPath); err == nil {
+		lp, err = listener.NewListenerProvider("config/listener.json")
+		if err != nil {
+			return
+		}
+		r.RegisterProviders(lp)
 	}
 
-	r.RegisterProvider(
-		lp,
-		rp,
-		mp,
+	if _, err = os.Stat(mongoPath); err == nil {
+		mp, err = mongo.NewMongoProvider(mongoPath)
+		if err != nil {
+			return
+		}
+		r.RegisterProviders(mp)
+	}
+
+	r.RegisterProviders(
 		ticker.NewTickerProvider(),
 		localexec.NewLocalExecProvider(),
 	)

@@ -10,24 +10,10 @@ import (
 	"github.com/Kozical/taskengine/core/runner"
 )
 
-type LocalExecState struct {
-	Stderr string
-	Stdout string
-}
-
-func (l LocalExecState) GetProperty(property string) interface{} {
-	switch property {
-	case "Stderr":
-		return l.Stderr
-	case "Stdout":
-		return l.Stdout
-	}
-	return nil
-}
-
 // LocalExecActionProvider: implements core.ActionProvider
 type LocalExecProvider struct {
-	Settings struct {
+	Properties map[string]string
+	Settings   struct {
 		File string   `json:"File"`
 		Args []string `json:"Args"`
 	}
@@ -37,20 +23,35 @@ func NewLocalExecProvider() *LocalExecProvider {
 	return &LocalExecProvider{}
 }
 
-func (lp *LocalExecProvider) Cleanup() {
-
+func (lp *LocalExecProvider) String() string {
+	return fmt.Sprintf("LocalExecProvider{Properties: %v}\n", lp.Properties)
 }
 
-func (lp *LocalExecProvider) Name() string {
-	return "localexec"
+/*
+type Provider interface {
+	Execute(*Job) (err error)
 }
+*/
 
-func (lp *LocalExecProvider) New() runner.Provider {
-	return &LocalExecProvider{}
-}
+func (lp *LocalExecProvider) Execute(j *runner.Job) (err error) {
 
-func (lp *LocalExecProvider) Register(j *runner.Job, raw json.RawMessage) (err error) {
-	err = json.Unmarshal(raw, &lp.Settings)
+	fmt.Println("localexec:", lp, "job:", j)
+
+	var task *runner.Task
+	for _, t := range j.Tasks {
+		if t.Provider == lp {
+			task = &t
+			break
+		}
+	}
+	if task == nil {
+		err = errors.New("LocalExecProvider Task was nil")
+		return
+	}
+
+	properties := j.InterpolateState(string(task.Properties))
+
+	err = json.Unmarshal(properties, &lp.Settings)
 	if err != nil {
 		return
 	}
@@ -62,10 +63,11 @@ func (lp *LocalExecProvider) Register(j *runner.Job, raw json.RawMessage) (err e
 		err = errors.New("Args parameter not provided to LocalExec")
 		return
 	}
-	return
-}
+	lp.Properties = make(map[string]string)
 
-func (lp *LocalExecProvider) Execute(j *runner.Job) (s runner.StateObject, err error) {
+	for _, name := range []string{"Stdout", "Stderr"} {
+		lp.Properties[name] = fmt.Sprintf("%s.%s", task.Title, name)
+	}
 
 	var stderr, stdout bytes.Buffer
 	cmd := exec.Command(lp.Settings.File, lp.Settings.Args...)
@@ -74,14 +76,13 @@ func (lp *LocalExecProvider) Execute(j *runner.Job) (s runner.StateObject, err e
 
 	err = cmd.Run()
 	if err != nil {
+		err = fmt.Errorf("Error executing %s -> %v\n", lp.Settings.File, err)
 		return
 	}
 
-	fmt.Printf("localexec executed: %s result: %s\n", lp.Settings.File, stdout.String())
+	fmt.Printf("localexec executed: %s %s result: %s\n", lp.Settings.File, lp.Settings.Args, stdout.String())
 
-	s = &LocalExecState{
-		Stdout: stdout.String(),
-		Stderr: stderr.String(),
-	}
+	j.State[lp.Properties["Stdout"]] = func() interface{} { return stdout.String() }
+	j.State[lp.Properties["Stderr"]] = func() interface{} { return stderr.String() }
 	return
 }
