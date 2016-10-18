@@ -5,9 +5,13 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/Kozical/taskengine/core/engine"
 )
@@ -18,6 +22,24 @@ import (
 		<resource_property>:<resource_value>
 	}
 */
+
+func init() {
+	logPath := flag.String("logpath", "", "specify a directory for log output, if not specified logs will be written to Stdout")
+	flag.Parse()
+
+	if *logPath == "" {
+		return
+	}
+	currentFile := fmt.Sprintf("%s-%s.log", os.Args[0], time.Now().Format("01-02-2006"))
+	path := filepath.Join(*logPath, currentFile)
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE, os.ModeAppend)
+	if err != nil {
+		panic(err)
+	}
+
+	log.SetOutput(f)
+}
 func main() {
 	tlsConfig, err := ReadConfiguration()
 	if err != nil {

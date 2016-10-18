@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -46,6 +47,7 @@ func ParseJobsInDirectory(path string) (jobs []*core.RPCJob, err error) {
 		if err != nil {
 			return
 		}
+		log.Printf("loaded job: %s\n", job.Name)
 		jobs = append(jobs, job)
 	}
 	return
@@ -54,10 +56,7 @@ func ParseJobsInDirectory(path string) (jobs []*core.RPCJob, err error) {
 func (p *Parser) parse() (job *core.RPCJob, err error) {
 	var obj []core.ParseObject
 
-	data := p.toJson()
-	fmt.Printf("json: %s\n", data)
-
-	err = json.Unmarshal(data, &obj)
+	err = json.Unmarshal(p.toJson(), &obj)
 	if err != nil {
 		err = fmt.Errorf("Error parsing json data.. %v\n", err)
 		return

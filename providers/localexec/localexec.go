@@ -34,9 +34,6 @@ type Provider interface {
 */
 
 func (lp *LocalExecProvider) Execute(j *runner.Job) (err error) {
-
-	fmt.Println("localexec:", lp, "job:", j)
-
 	var task *runner.Task
 	for _, t := range j.Tasks {
 		if t.Provider == lp {
@@ -79,8 +76,6 @@ func (lp *LocalExecProvider) Execute(j *runner.Job) (err error) {
 		err = fmt.Errorf("Error executing %s -> %v\n", lp.Settings.File, err)
 		return
 	}
-
-	fmt.Printf("localexec executed: %s %s result: %s\n", lp.Settings.File, lp.Settings.Args, stdout.String())
 
 	j.State[lp.Properties["Stdout"]] = func() interface{} { return stdout.String() }
 	j.State[lp.Properties["Stderr"]] = func() interface{} { return stderr.String() }

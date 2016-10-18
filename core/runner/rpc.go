@@ -52,6 +52,7 @@ func (r RPCServer) Close() {
 	close(r.quit)
 }
 func (r RPCServer) ListenAndServeTLS(addr string, config *tls.Config) (err error) {
+	log.Printf("Listening for incoming connections on %s\n", addr)
 	var lst net.Listener
 	lst, err = tls.Listen("tcp", addr, config)
 	if err != nil {
@@ -95,7 +96,7 @@ func (r RPCTask) Ping(req *[]byte, res *[]byte) (err error) {
 
 func (r RPCTask) Dispatch(j *core.RPCJob, res *[]byte) (err error) {
 	var tasks []Task
-
+	log.Printf("Dispatching job %s\n", j.Name)
 	for _, v := range j.Objects {
 		base := r.T.GetProvider(v.Provider)
 		if base == nil {

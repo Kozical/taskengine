@@ -125,7 +125,6 @@ func (r RPCClient) Call(method string, args interface{}, reply interface{}) (err
 	// Cache on : rpc.ErrShutdown
 	err = ErrorZeroAttempts
 	for i := 3; i > 0 && (err == io.ErrUnexpectedEOF || err == ErrorZeroAttempts); i-- {
-		//log.Printf("Call(%s) err = %v\n", method, err)
 		conn := r.pool.Pop()
 		client := rpc.NewClient(conn)
 		err = client.Call(method, args, reply)
@@ -200,14 +199,14 @@ func NewRPCMgr(poolsize int, endpoints []string, tlsConfig *tls.Config) (mgr *RP
 		Assignments: make(map[*RPCClient][]*core.RPCJob),
 	}
 	for _, e := range endpoints {
-		go func(endpoint string) {
-			c := NewRPCClient(poolsize, poolsize, endpoint, tlsConfig)
+		log.Printf("Connecting to %s\n", e)
+		c := NewRPCClient(poolsize, poolsize, e, tlsConfig)
 
-			mgr.muClients.Lock()
-			mgr.Clients = append(mgr.Clients, c)
-			mgr.ReadyClients = append(mgr.Clients, c)
-			mgr.muClients.Unlock()
-		}(e)
+		mgr.muClients.Lock()
+		mgr.Clients = append(mgr.Clients, c)
+		mgr.ReadyClients = append(mgr.Clients, c)
+		mgr.muClients.Unlock()
+
 	}
 	return
 }
@@ -234,8 +233,6 @@ func (mgr *RPCMgr) NextClient() (clt *RPCClient) {
 		}
 		failures++
 	}
-
-	log.Printf("NextClient: %v\n", clt)
 	return
 }
 

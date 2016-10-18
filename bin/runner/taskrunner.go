@@ -8,9 +8,12 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/Kozical/taskengine/core/runner"
 
@@ -21,12 +24,14 @@ import (
 )
 
 func main() {
-
+	logPath := flag.String("logpath", "", "specify a directory for log output, if not specified logs will be written to Stdout")
 	port := flag.Int("port", 8103, "specify the port that should be used for this runner [default: 8103]")
 	listenerPath := flag.String("listener", "config/listener.json", "specify the path to the listener config [default: config/listener.json]")
 	mongoPath := flag.String("mongo", "config/mongo.json", "specify the path to the mongo config [default: config/mongo.json]")
 
 	flag.Parse()
+
+	ConfigureLogging(*logPath)
 
 	t := new(runner.Runner)
 
@@ -52,9 +57,24 @@ func main() {
 	intC := make(chan os.Signal)
 	signal.Notify(intC, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 
-	fmt.Printf("Received %s signal..\n", <-intC)
+	log.Printf("Received %s signal..\n", <-intC)
 
 	srv.Close()
+}
+
+func ConfigureLogging(logPath string) {
+	if logPath == "" {
+		return
+	}
+	currentFile := fmt.Sprintf("%s-%s.log", os.Args[0], time.Now().Format("01-02-2006"))
+	path := filepath.Join(logPath, currentFile)
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE, os.ModeAppend)
+	if err != nil {
+		panic(err)
+	}
+
+	log.SetOutput(f)
 }
 
 func ReadConfiguration() (tlsConfig *tls.Config, err error) {
