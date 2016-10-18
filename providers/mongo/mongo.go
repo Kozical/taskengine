@@ -115,6 +115,8 @@ func (mp *MongoProvider) Execute(j *runner.Job) (err error) {
 		return
 	}
 
+	mp.Properties = make(map[string]string)
+
 	for _, name := range []string{"Result"} {
 		mp.Properties[name] = fmt.Sprintf("%s.%s", task.Title, name)
 	}

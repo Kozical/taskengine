@@ -1,16 +1,30 @@
 listener ListenForConnections {
 	Method: Listen
-	Path: /getservices
+	Path: /getrazors
 }
-localexec DoStuff {
+mongo RazorNodes {
+	Database: razor
+	Collection: nodes
+	Sort: -timestamp
+	Limit: 1
+}
+mongo RazorPolicies {
+	Database: razor
+	Collection: policies
+	Sort: -timestamp
+	Limit: 1
+}
+localexec MergeNodesAndPolicies {
 	File: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
 	Args:[
 		-ExecutionPolicy
 		Bypass
 		-File
-		C:\temp\scripts\Get-Services.ps1
-		-Name
-		$(ListenForConnections.URL.service)
+		C:\temp\scripts\Merge-NodesAndPolicies.ps1
+		-Nodes
+		$(RazorNodes.Result)
+		-Policies
+		$(RazorPolicies.Result)
 	]
 }
 listener ListenForConnections {
@@ -18,5 +32,5 @@ listener ListenForConnections {
 	Headers:{
 		Content-Type: application/json
 	}
-	Response: $(DoStuff.Stdout)
+	Response: $(MergeNodesAndPolicies.Stdout)
 }

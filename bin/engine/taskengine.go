@@ -48,7 +48,7 @@ func main() {
 
 	endpoints := []string{"self.lab.local:8103"}
 
-	mgr := engine.NewRPCMgr(15, endpoints, tlsConfig)
+	mgr := engine.NewRPCMgr(5, endpoints, tlsConfig)
 	defer mgr.Cleanup()
 
 	jobs, err := engine.ParseJobsInDirectory("jobs")

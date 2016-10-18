@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -91,7 +92,7 @@ func (lp *ListenerProvider) Register(fn func() *runner.Job) {
 	}
 	lp.Properties = make(map[string]string)
 
-	for _, name := range []string{"W", "R", "Closer"} {
+	for _, name := range []string{"W", "R", "Closer", "Body", "Method"} {
 		lp.Properties[name] = fmt.Sprintf("%s.%s", task.Title, name)
 	}
 
@@ -128,6 +129,15 @@ func (lp *ListenerProvider) RegisterListen(t *runner.Task, fn func() *runner.Job
 
 		j.Store(lp.Properties["W"], func() interface{} { return w })
 		j.Store(lp.Properties["R"], func() interface{} { return r })
+		j.Store(lp.Properties["Body"], func() interface{} {
+			body, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				return nil
+			}
+			r.Body.Close()
+			return string(body)
+		})
+		j.Store(lp.Properties["Method"], func() interface{} { return r.Method })
 		j.Store(lp.Properties["Closer"], func() interface{} {
 			closer <- struct{}{}
 			return nil
